@@ -1,0 +1,161 @@
+diff --git a/node_modules/react-native-filament/ios/src/RNFFilamentInstaller.mm b/node_modules/react-native-filament/ios/src/RNFFilamentInstaller.mm
+index af9f548..2e4bee2 100644
+--- a/node_modules/react-native-filament/ios/src/RNFFilamentInstaller.mm
++++ b/node_modules/react-native-filament/ios/src/RNFFilamentInstaller.mm
+@@ -11,8 +11,6 @@
+ #import <Foundation/Foundation.h>
+ #import <ReactCommon/CallInvoker.h>
+ 
+-#import <React/RCTBridge+Private.h>
+-#import <React/RCTBridge.h>
+ 
+ #import "threading/RNFCallInvokerDispatcher.h"
+ #import "threading/RNFDispatcher.h"
+@@ -20,11 +18,6 @@
+ using namespace facebook;
+ using namespace margelo;
+ 
+-// This is defined in RCTCxxBridge.mm, and we are technically using a private API here.
+-@interface RCTCxxBridge (CallInvoker)
+-- (std::shared_ptr<react::CallInvoker>)jsCallInvoker;
+-@end
+-
+ @implementation FilamentInstaller
+ 
+ #ifdef RCT_NEW_ARCH_ENABLED
+diff --git a/node_modules/react-native-filament/ios/src/RNFFilamentModule.mm b/node_modules/react-native-filament/ios/src/RNFFilamentModule.mm
+index 6078080..0a71fbc 100644
+--- a/node_modules/react-native-filament/ios/src/RNFFilamentModule.mm
++++ b/node_modules/react-native-filament/ios/src/RNFFilamentModule.mm
+@@ -8,7 +8,6 @@
+ #import "RNFFilamentModule.h"
+ #import "RNFFilamentInstaller.h"
+ #import <Foundation/Foundation.h>
+-#import <React/RCTBridge+Private.h>
+ 
+ #ifndef RCT_NEW_ARCH_ENABLED
+ #import <React/RCTBridge.h>
+@@ -19,18 +18,20 @@
+ #import <React/RCTScheduler.h>
+ #import <React/RCTSurfacePresenter.h>
+ #import <React/RCTUIManager.h>
++#import <ReactCommon/RCTTurboModuleWithJSIBindings.h>
+ #import <react/renderer/components/rnfilament/ShadowNodes.h>
+ 
+ using namespace facebook;
+ 
+-@interface RCTBridge (JSIRuntime)
+-- (void*)runtime;
+-- (std::shared_ptr<react::CallInvoker>)jsCallInvoker;
++// React Native 0.87 removed RCTCxxBridge. The TurboModule manager now hands the
++// runtime and call invoker to modules through RCTTurboModuleWithJSIBindings.
++@interface FilamentModule () <RCTTurboModuleWithJSIBindings>
+ @end
+ 
+ @implementation FilamentModule {
+   __weak RCTSurfacePresenter* _surfacePresenter;
+-  BOOL _isBridgeless;
++  jsi::Runtime* _runtime;
++  std::shared_ptr<react::CallInvoker> _callInvoker;
+ }
+ 
+ RCT_EXPORT_MODULE()
+@@ -41,33 +42,24 @@ RCT_EXPORT_MODULE()
+  */
+ - (void)setSurfacePresenter:(id<RCTSurfacePresenterStub>)surfacePresenter {
+   _surfacePresenter = surfacePresenter;
+-  _isBridgeless = true;
+ }
+ 
+-- (NSNumber*)install {
+-  jsi::Runtime* jsiRuntime = nullptr;
+-  std::shared_ptr<react::CallInvoker> jsCallInvoker = nullptr;
+-  if (_isBridgeless) {
+-    // If we are in bridgless mode we can cast directly to RCTCxxBridge to get our properties:
+-    RCTCxxBridge* cxxBridge = (RCTCxxBridge*)self.bridge;
+-    jsiRuntime = (jsi::Runtime*)cxxBridge.runtime;
+-    jsCallInvoker = cxxBridge.jsCallInvoker;
+-  } else {
+-    jsiRuntime = [self.bridge respondsToSelector:@selector(runtime)] ? reinterpret_cast<jsi::Runtime*>(self.bridge.runtime) : nullptr;
+-    jsCallInvoker = self.bridge.jsCallInvoker;
+-    _surfacePresenter = self.bridge.surfacePresenter;
+-  }
++- (void)installJSIBindingsWithRuntime:(jsi::Runtime&)runtime callInvoker:(const std::shared_ptr<react::CallInvoker>&)callInvoker {
++  _runtime = &runtime;
++  _callInvoker = callInvoker;
++}
+ 
+-  if (jsiRuntime == nullptr) {
+-    NSLog(@"Failed to install react-native-filament: jsi::Runtime is nil (bridgless: %@)!", _isBridgeless ? @"YES" : @"NO");
++- (NSNumber*)install {
++  if (_runtime == nullptr) {
++    NSLog(@"Failed to install react-native-filament: jsi::Runtime is nil!");
+     return [NSNumber numberWithBool:NO];
+   }
+-  if (jsCallInvoker == nullptr) {
+-    NSLog(@"Failed to install react-native-filament: react::CallInvoker is nil (bridgless: %@)!", _isBridgeless ? @"YES" : @"NO");
++  if (_callInvoker == nullptr) {
++    NSLog(@"Failed to install react-native-filament: react::CallInvoker is nil!");
+     return [NSNumber numberWithBool:NO];
+   }
+ 
+-  BOOL result = [FilamentInstaller installToBridge:jsiRuntime callInvoker:jsCallInvoker surfacePresenter:_surfacePresenter];
++  BOOL result = [FilamentInstaller installToBridge:_runtime callInvoker:_callInvoker surfacePresenter:_surfacePresenter];
+   return [NSNumber numberWithBool:result];
+ }
+ 
+diff --git a/node_modules/react-native-filament/lib/commonjs/utilities/withCleanupScope.js b/node_modules/react-native-filament/lib/commonjs/utilities/withCleanupScope.js
+index 25c667a..551a2f9 100644
+--- a/node_modules/react-native-filament/lib/commonjs/utilities/withCleanupScope.js
++++ b/node_modules/react-native-filament/lib/commonjs/utilities/withCleanupScope.js
+@@ -28,7 +28,7 @@ var _reactNative = require("react-native");
+ function withCleanupScope(cleanupFunction) {
+   return () => {
+     // runAfterInteractions to make sure its called after all children have run their cleanup and all interactions are done
+-    _reactNative.InteractionManager.runAfterInteractions(() => {
++    requestIdleCallback(() => {
+       // Cleanup in worklets context, as cleanup functions might also use the worklet context
+       // and we want to queue our cleanup after all other worklets have run
+       setTimeout(() => {
+diff --git a/node_modules/react-native-filament/lib/module/utilities/withCleanupScope.js b/node_modules/react-native-filament/lib/module/utilities/withCleanupScope.js
+index 67eceee..1bf5c7d 100644
+--- a/node_modules/react-native-filament/lib/module/utilities/withCleanupScope.js
++++ b/node_modules/react-native-filament/lib/module/utilities/withCleanupScope.js
+@@ -1,6 +1,5 @@
+ "use strict";
+ 
+-import { InteractionManager } from 'react-native';
+ 
+ /**
+  * Operations that are releasing memory from JS should be executed after cleanup functions
+@@ -25,7 +24,7 @@ import { InteractionManager } from 'react-native';
+ export function withCleanupScope(cleanupFunction) {
+   return () => {
+     // runAfterInteractions to make sure its called after all children have run their cleanup and all interactions are done
+-    InteractionManager.runAfterInteractions(() => {
++    requestIdleCallback(() => {
+       // Cleanup in worklets context, as cleanup functions might also use the worklet context
+       // and we want to queue our cleanup after all other worklets have run
+       setTimeout(() => {
+diff --git a/node_modules/react-native-filament/src/utilities/withCleanupScope.ts b/node_modules/react-native-filament/src/utilities/withCleanupScope.ts
+index 20ec04e..6f2b8ed 100644
+--- a/node_modules/react-native-filament/src/utilities/withCleanupScope.ts
++++ b/node_modules/react-native-filament/src/utilities/withCleanupScope.ts
+@@ -1,5 +1,3 @@
+-import { InteractionManager } from 'react-native'
+-
+ /**
+  * Operations that are releasing memory from JS should be executed after cleanup functions
+  * that are still operating on the resource.
+@@ -22,8 +20,9 @@ import { InteractionManager } from 'react-native'
+  */
+ export function withCleanupScope(cleanupFunction: Function) {
+   return () => {
+-    // runAfterInteractions to make sure its called after all children have run their cleanup and all interactions are done
+-    InteractionManager.runAfterInteractions(() => {
++    // React Native 0.87 removed InteractionManager. requestIdleCallback still runs after all children have
++    // run their cleanup and pending work is done.
++    requestIdleCallback(() => {
+       // Cleanup in worklets context, as cleanup functions might also use the worklet context
+       // and we want to queue our cleanup after all other worklets have run
+       setTimeout(() => {

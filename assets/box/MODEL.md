@@ -2,7 +2,7 @@
 
 ## File and structure
 
-[designer-box-2-v1-icy.glb](designer-box-2-v1-icy.glb) is a glTF 2.0 binary, 1,322,324 bytes. Geometry, base materials, and two wordmark texture images are embedded. It has no external buffer or image dependencies, animation clips, or skeleton.
+[designer-box-2-v1-icy.glb](designer-box-2-v1-icy.glb) is a glTF 2.0 binary, 1,317,592 bytes. Geometry, base materials, and two wordmark texture images are embedded. It has no external buffer or image dependencies, animation clips, or skeleton.
 
 | Node name | Part | Opening behavior |
 | --- | --- | --- |
@@ -10,7 +10,7 @@
 | `Shell_Fitted_Cushion` | Interior watch cushion | Stationary |
 | `Shell_Lid` | Upper shell/lid, including inner surface | Rotates around the hinge |
 | `Shell_Seam` | Seam trim and lining | Stationary |
-| `Shell_Wordmark` | MISTYBOX lettering attached to the lid | Moves with the lid |
+| `Shell_Wordmark` | MISTERYBOX lettering attached to the lid | Moves with the lid |
 
 A loader may represent a named part as a group containing multiple material meshes. The names above identify the complete parts.
 

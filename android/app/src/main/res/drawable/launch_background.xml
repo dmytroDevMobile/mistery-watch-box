@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mirrors the iOS LaunchScreen and the JS splash (same logo, size and centre). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:width="240dp"
+        android:height="300dp"
+        android:gravity="center"
+        android:drawable="@drawable/splash_logo" />
+</layer-list>
